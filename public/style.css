@@ -1,0 +1,346 @@
+body { font: 12px Helvetica; margin:0; padding:0; }
+#map { position:absolute; top:0; bottom:0; width:100%; }
+
+
+#charts {
+  position:absolute; 
+
+  top:0; 
+  bottom:0; 
+  right:0; 
+  width:280px; 
+  background: #f8f8f8;
+  background-blend-mode: lighten;
+  white-space: nowrap;
+  padding: 30px;
+  padding-top: 50px;
+  padding-bottom: 50px;
+  box-shadow: -10px 0px 10px rgba(135, 135, 135, 0.2);
+}
+
+.mapboxgl-popup {
+  opacity:0.95;
+  font: 10px Helvetica;
+}
+.mapboxgl-popup-content {
+  border-radius:0px;
+  box-shadow: -5px 0px 5px rgba(135, 135, 135, 0.2);
+  box-shadow: none;
+}
+
+#load {
+  position:absolute; 
+  display: flex;
+  align-items: center; /* Vertical center alignment */
+  justify-content: center;
+  top:0; 
+  bottom:0; 
+  right:0; 
+  left:0;
+  opacity: 0.7;
+  text-align: center;
+  background: #f8f8f8;
+  white-space: nowrap;
+  padding: 30px;
+  padding-top: 50px;
+  background-blend-mode: normal;
+}
+
+#buttons {
+  position:absolute; 
+  display: flex;
+  align-items:  flex-end; /* Vertical center alignment */
+  justify-content: center;
+  height:60; 
+  right: 340px;
+  bottom:0; 
+  opacity: 1;
+  text-align: center;
+  white-space: nowrap;
+  padding: 30px;
+  padding-top: 0;
+  background-blend-mode: normal;
+  color: hsl(0, 0%, 64%);
+}
+
+.resetAll:hover{
+  cursor: pointer;
+}
+
+.groupName:hover{
+  cursor: pointer;
+}
+
+/* unvisited link */
+a:link{
+  color: rgb(59, 59, 59);
+}
+
+/* visited link */
+a:visited {
+  color: rgb(0, 58, 92);
+}
+
+/* mouse over link */
+a:hover {
+  color: rgb(0, 204, 255);
+}
+
+/* selected link */
+a:active {
+  color: rgb(0, 58, 92);
+}
+
+
+/*path {
+    fill: #e55e5e;
+    stroke: #e55e5e;
+    stroke-width: 2;
+    fill-opacity: 0.6;
+}*/
+.axis path,
+.axis line {
+    fill: none;
+    stroke: grey;
+    stroke-width: 1;
+    shape-rendering:auto;
+}
+.axis text {
+    color: grey;
+    font-size: 8px;
+}
+.axis path {
+    visibility: hidden;
+}
+.graphName{
+    color: #ffae00;
+    font-weight: bold;
+}
+.ui-brush {
+  background:#f8f8f8;
+  position:absolute;
+  bottom:0;right:0;left:0;
+  height:140px;
+  }
+.brush .extent {
+  stroke:#fff;
+  fill-opacity:0.125;
+  shape-rendering:crispEdges;
+  }
+
+.map-overlay {
+    font: 12px/20px 'Helvetica Neue', Arial, Helvetica, sans-serif;
+    position: absolute;
+    width: 30px; /*26*/
+    top: 70px;
+    bottom: 124px;
+    left: 0;
+    padding: 10px;
+}
+
+.map-overlay .map-overlay-inner {
+    background-color: #fff;
+    width: 100%;
+    height: 100%;
+}
+
+svg.mapoverlay{
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}
+svg.bottombar{
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}
+
+svg.group{
+  display: block;
+}
+
+.map-overlay h2{
+    line-height: 30px;
+    color: #cccccc;
+    font-family:  Helvetica, Arial, sans-serif;
+    display: block;
+    margin: 0 0 10px;
+    writing-mode: vertical-rl;
+    -webkit-transform:rotate(180deg);
+    -moz-transform:rotate(180deg);
+    -o-transform: rotate(180deg);
+    -ms-transform:rotate(180deg);
+    transform: rotate(180deg);
+}
+
+.map-overlay input {
+    background-color: transparent;
+    display: inline-block;
+    position:absolute;
+    cursor: ns-resize;
+    width: 56%;
+    top:70px;
+    bottom: 80px;
+}
+
+#month {
+    position: absolute;
+    top: 20px;
+}
+#visits {
+    position: absolute;
+    bottom: 10px;
+}
+
+/* The container */
+
+#checkboxes {
+    box-shadow: #cccccc;
+    position:absolute;
+    bottom: 164px;
+    right:10px;
+    width:130px;
+    padding:8px 8px 0px 8px;
+    background-color: white;
+}
+
+.mapoverlay{
+  pointer-events: none;
+}
+
+.chart * {
+  pointer-events: all;
+}
+
+.chart:hover {
+  cursor: pointer;
+}
+
+.buttonCircle:hover {
+  cursor: pointer;
+}
+
+#tooltip {
+  position:absolute;
+  z-index:120;
+  border-radius:9px;
+  outline: "grey";
+  outline-width: 2px;
+  pointer-events: none;
+  opacity:0.5;
+}
+
+#infotip {
+  position:absolute;
+  z-index:100;
+  background:white;
+  pointer-events: none;
+  position:absolute;
+  font-size: 10px;
+  opacity:1;
+  color: grey;
+  visibility: hidden;
+}
+
+
+
+.distr {
+  text-decoration: underline;
+}
+
+.container {
+    display: block;
+    position: relative;
+    padding-left: 5px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    /*-webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;*/
+    font: 20px 'Helvetica Neue', Arial, Helvetica, sans-serif;
+    color: #cccccc;
+}
+
+h2{
+  display: inline-block;
+  margin: auto;
+}
+
+.blocks {
+  display: inline-block ;
+  position: absolute;
+  bottom: 30px;
+  text-align: center;
+  -webkit-user-select: none;  
+  -moz-user-select: none;    
+  -ms-user-select: none;      
+  user-select: none;
+}
+
+/* Hide the browser's default checkbox */
+.container input {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 0;
+  width: 0;
+}
+
+/* Create a custom checkbox */
+.checkmark {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 25px;
+  width: 25px;
+  background-color: #eee;
+}
+
+h1 {
+  font-size: 1.8em;
+}
+
+/* On mouse-over, add a grey background color */
+.container:hover input ~ .checkmark {
+  background-color: #ccc;
+}
+
+/* When the checkbox is checked, add a blue background #fc9267 #ca430e*/
+.container input:checked ~ .checkmark{
+  background-color: #fc9267;
+}
+/* When the checkbox is checked, add a blue background #6db2da #1778b0*/
+.container:nth-child(2) input:checked ~ .checkmark{
+  background-color: #6db2da ;
+}
+
+/* Create the checkmark/indicator (hidden when not checked) */
+.checkmark:after {
+  content: "";
+  position: absolute;
+  display: none;
+}
+
+/* Show the checkmark when checked */
+.container input:checked ~ .checkmark:after {
+  display: block;
+}
+
+/* Style the checkmark/indicator */
+.container .checkmark:after {
+  left: 9px;
+  top: 5px;
+  width: 5px;
+  height: 10px;
+  border: solid white;
+  border-width: 0 3px 3px 0;
+  -webkit-transform: rotate(45deg);
+  -ms-transform: rotate(45deg);
+  transform: rotate(45deg);
+}
+#map{
+    border: white;
+    border-width: 0px;
+    border-radius: 0px;
+}

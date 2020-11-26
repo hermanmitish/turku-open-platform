@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset=utf-8 />
+<title>Turku Open Platform</title>
+<meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+<script src='modules/mapbox-gl.js'></script>
+<link href='modules/mapbox-gl.css' rel='stylesheet' />
+<link href='style.css' rel='stylesheet' />
+<link rel="icon" href="/turku/favicon.ico" type="image/x-icon" />
+<link rel="shortcut icon" href="/turku/favicon.ico" type="image/x-icon" />
+</head>
+<body>
+<script src='modules/d3/d3.js' charset="utf-8"></script>
+
+<script src='modules/turf.min.js'></script>
+
+<div id='map' class='light'></div>
+<div id='charts' style="overflow-y:scroll">
+    <div id="title" class="blocks"><h1 style="opacity:0.8">Turku Open Platform</h1></div>
+    <div id="controlBar" class="blocks"></div>
+    <div id="Blocks" class="blocks">
+        <div id="Space" class="Chart" style="display:table"></div>
+        <div id="Activities" class="Chart" style="display:table"></div>
+        <div id="Values" class="Chart"></div>
+    </div>
+    <div id="lowerBar" class="blocks">
+        <hr width="100%" noshade style="border: 0.5px solid lightgrey; margin:0; height: 0;">
+        <p style="display: inline-block; margin:10px 5px 10px 0px; font-size: 10px;">Show selected heatmaps: </p>
+        <select id="selector" style="display:  inline-block; margin:10px 0px 10px 5px; font-size: 10px;" >
+            <option selected>None</option>
+        </select>
+        <!--<hr width="100%" noshade style="border: 0.5px solid lightgrey; margin:0; height: 0;">-->
+    </div>
+
+
+</div>
+<div id="infotip" >
+    <span id="info" style="font-size: 10px; text-anchor: end; color:grey;line-height: 140%;" ></span>
+</div>
+<div id='load'><span style="font-size:24px; font-weight:100; opacity:0.7" id="load_text">0%</span></div>
+
+<script>
+!function(e){"use strict";var n,t,i,a=document.createEvent("Event");a.initEvent("resizeend",!0,!0);var r=function(e){i=e},o=function(){return Date.now()-t>=i?(e.cancelAnimationFrame(n),void e.dispatchEvent(a)):void(n=e.requestAnimationFrame(o))};r(100),e.addEventListener("resize",function(){e.cancelAnimationFrame(n),t=Date.now(),n=e.requestAnimationFrame(o)},!1),e.resizeend={delay:r}}(window);
+mapboxgl.accessToken = 'pk.eyJ1Ijoic3dpdGNoOSIsImEiOiJjamozeGV2bnkxajV2M3FvNnpod3h4ODlpIn0.CTt2IXV8II6finbTlxEddg';
+
+var bounds = [
+[22.1694545, 60.4066193], // Southwest coordinates
+[22.359511, 60.501041]  // Northeast coordinates
+];
+
+var map = new mapboxgl.Map({ 
+    container: 'map',
+    style: 'modules/style.json',
+    center: [22.276521, 60.4482738],
+    zoom: 13.4,
+    maxZoom: 17,
+    minZoom:11,
+    maxBounds: bounds
+});
+
+var margin = {top: 20, right: 30, bottom: 20, left: 30},
+    height = Math.max( document.body.scrollHeight, document.body.offsetHeight, document.documentElement.clientHeight, document.documentElement.scrollHeight, document.documentElement.offsetHeight ),
+    winWidth = Math.max( document.body.scrollWidth, document.body.offsetWidth, document.documentElement.clientWidth, document.documentElement.scrollWidth, document.documentElement.offsetWidth ),
+    titleHeight = 50,
+    barHeight = 80,
+    lowerBarHeight = 40,
+    width = 280,
+    color = {},
+    leftOffset= 240*0.41,
+    graphPadding = 16,
+    lineOffset = 6,
+    popups={},
+    groupNames = ["Space", "Activities", "Values"],
+    //colors = ["#54d3e7","#9e8de1","#e963c1"];
+    colors = ["#3ba8ea","#9e8de1","#e963c1"],
+    previousRadius = [0,0,0],
+    radiusRange = [200,400,800,1200],
+    scaleSelector = 1,
+    totalRadius = radiusRange[scaleSelector],
+    GrowthWorker = {},
+    animation = {},
+    workerData = {},
+    popupClosed = {},
+    threeColor = function(i, ind){
+        i=2-i;
+        
+        let c = d3.hsl(colors[ind])
+        if(ind==2){c.s *= 0.7; c.l += 0.03*(i+1)}
+        if(ind==0){c.s *= 0.75; c.l += 0.02*(i+1)}
+        if(ind==1){c.l = c.l-0.05 + 0.03*(i+1)}
+        c.l += ((i+1)/3)*0.12;
+        c.h *= 1-(i/32);
+        return c
+    }
+d3.select('#charts').attr('width', width).style('opacity', 0);
+    
+var colorScheme = d3.scaleOrdinal()
+    .range(colors);
+
+var point = {
+    "type": "FeatureCollection",
+        "features": []
+    };
+var features = {} 
+var infotip = d3.select('#infotip');
+var info = d3.select('#info');
+
+var data = {"Space":[
+                {"axis":"Building Reach","value":1,"info":"Describes how building density is percieved by measuring the relation between views, building heights and distance between buildings. The higher the value closer one space feels like."},
+                {"axis":"FAR","value":1, "info":"Floor Area Ratio - Measures the average gross floor area per one unit of land."},
+                {"axis":"Pedestrian Access","value":1, "info":"Measures the easiness of reaching different spaces within urban districts. The higher the values the easier it is for pedestrian to navigate the urban environment."},
+                {"axis":"Urban Access","value":1, "info":"Measures the easiness of reaching different spaces through urban districts and outer regions. The higher the values the easier is for cars and public transport to quickly go through the city."},
+                {"axis":"Walkability","value":1, "info":"Measures how many spaces, streets or buildings can be reached within walking distance."}],
+            "Activities":[
+                {"axis":"Consumption","value":1, "info":"Measures the ability to reach retails and activities that are not considered a necessity, such as fashion, electronics or sales of good that are not necessary to the daily routines - within walking distance."},
+                {"axis":"Mobility","value":1, "info":"Measures the ability to reach public transport stops and transit hubs, including taxi stops - within walking distance."},
+                {"axis":"Necessary Activities","value":1, "info":"Measures the ability to reach urban amenities that host and foster daily routine activities, such as going to school, doing the groceries or visiting services that are necessary to daily life - within walking distance."},
+                {"axis":"Optional Activities","value":1, "info":"Measures the ability to reach urban amenities that host and foster activities for the free time, such as leisure, shopping, doing sport or social activities."},
+                {"axis":"Diversity","value":1, "info":"Measures the mixity of urban amenities. The higher the values the more different activities are available, such as optional or necessary activities. More about this index on www.spinunit.eu/top."}],
+            "Values":[
+                {"axis":"Indoor Activity","value":1, "info":"Measures the ability to reach venues that are highly popular on social media or visited by a larger amount of users."},
+                {"axis":"Lively Places","value":1, "info":"Measures the ability to reach places that attracted a large number of photographs shared on social media."},
+                {"axis":"Popular Indoor","value":1, "info": "Measures the ability to reach indoor formal and informal venues that are highly popular on social media or visited by a larger amount of users."},
+                {"axis":"Popular Outdoor","value":1, "info": "Measures the ability to reach outdoor formal and informal venues that are highly popular on social media or visited by a larger amount of users."},
+                {"axis":"Real Estate","value":1, "info":"Describes the normalised average price per square meter for rents and sale transactions occurred at the end of 2017."}]};
+var blocks_height = height- margin.top - margin.bottom -titleHeight - barHeight -lowerBarHeight;
+d3.select("#title").attr("style", "width: "+width+"px ; top:"+margin.top+"px; height:" + titleHeight + "px")
+d3.select("#Blocks").attr("style", "top:"+(margin.top+titleHeight+barHeight)+"px; height:" + (blocks_height) + "px")
+d3.select("#controlBar").attr("style", "width: "+width+"px ; top:"+(margin.top+titleHeight)+"px; height:" + (barHeight) + "px")
+d3.select("#lowerBar").attr("style", "width: "+width+"px ; top:"+(margin.top+titleHeight+barHeight+blocks_height)+"px; height:" + (lowerBarHeight) + "px")
+
+function Block(id){
+    var groupNames = d3.select("#"+id).append("div")
+        .attr("style","display:block; text-align:left; opacity:0.6")
+        .append("span")
+            .attr("style", "display: block; padding-top:10px;padding-bottom:5px; padding-left:"+leftOffset+"px")
+            .text(id)		
+            .attr('class', 'chartName')
+            .style("font-size", "16px")
+            .style("font-weight", "600")
+
+    var main = d3.select("#"+id).attr("style", "height: 32.8%" ).append("div").attr("style", function(){return "display:block; height:"+ (d3.select(this).node().parentNode.offsetHeight-groupNames.node().parentNode.offsetHeight) + "px;"})
+    var left = main.append("div").attr("style", "display:inline-block; width:"+leftOffset+"px").append("svg").attr("width",  leftOffset).attr("height", function(){return main.node().offsetHeight})
+    var right = main.append("div").attr("style", "display:inline-block").append("svg").attr("id","right").attr("width",  width-leftOffset).attr("height", function(){return main.node().offsetHeight})
+
+    var graphHeight = Math.round(right.node().parentNode.parentNode.offsetHeight)-graphPadding;
+
+    var groupWidth = graphHeight/11;
+    var timeBeforeInfo;
+
+    var leftText = left.selectAll("."+id+"_text").data(data[id]).enter()
+        .append("g")
+            .attr("transform", function(d,i){
+                return "translate(" + (95) + "," + (((graphHeight-groupWidth)/4*i)+groupWidth/2+graphPadding/2+2.5) + ")"})
+            .on("mouseover", function(d){
+                info.text(d.info);
+                infotip.style("width", "200px")
+                        .style("padding", "15px")
+                        .style("border", "2px solid lightgrey")
+                d3.select(this).style("cursor", "pointer");
+                timeBeforeInfo = setTimeout(function(){
+                    infotip.style("visibility","visible")
+                }, 800);
+                
+            })
+            .on("mouseleave", function(d){
+                clearTimeout(timeBeforeInfo);
+                d3.select(this).style("cursor", "");
+                infotip.style("visibility","hidden")
+                    .style("width", "0px")
+                    .style("padding", "0px")
+                    .style("border", "0px solid lightgrey")
+                    .style("transform", "translate(0px, 0px)");
+                info.text("");
+            })
+    
+    leftText.append("text")
+        .text(function(d){return d.axis})
+        .attr("id", function(d){return d.axis})
+        .attr("text-anchor", "end")
+        .attr("x", function(){return d3.select(this).node().parentNode.parentNode.offsetWidth})
+        .attr("dx", "-3px")
+        .attr("class", id+"_text")
+        .style("font-size", "10px")
+
+    right.append("path")
+        .attr("d", function(){return "M "+lineOffset+" -0.5 L 0 -0.5 L 0 "+ (graphHeight+0.5) +" L "+ lineOffset +" " + (graphHeight+0.5)})
+        .style("stroke-width", "0.5px")
+        .style("stroke", "black")
+        .style("fill-opacity", 0)
+        .style("opacity", 0.3)
+        .attr("transform", "translate(1,"+graphPadding/2+")")
+
+    for(var j=0; j<3; j++){
+        var lineGroup = right.append("g").attr("id",id+j+"_group").selectAll(".chartLines_"+j)
+            .data(data[id])
+            .enter()
+            .append("g");
+        var random=[]
+        lineGroup.append("path")
+            .attr("id", function(d){return d.axis})
+            .attr("class", "chartlines_"+j)
+            .attr("d", function(d,i){random.push(Math.random(i*j)); return "M " + lineOffset*1.5 + " 0 L " + (lineOffset*1.5 + 10 + random[i]*15) + " 0"})
+            .attr("transform", function(d,i){
+                return "translate(" + (1) + "," + ((graphHeight-groupWidth)/4*i+(groupWidth/2*j)+graphPadding/2) + ")"})
+            .style("stroke-width", "2px")
+            .style("stroke", "lightgrey")
+        
+        lineGroup.append("circle")
+            .attr("id", function(d){return d.axis})
+            .attr("class", "chartlines_"+j)
+            .attr("cx", function(d,i){return lineOffset*1.5 + 10 + random[i]*15})
+            .attr("r",2)
+            .attr("transform", function(d,i){
+                return "translate(" + (1) + "," + ((graphHeight - groupWidth)/4*i+(groupWidth/2*j)+graphPadding/2) + ")"})
+            .style("fill", "lightgrey")
+
+        lineGroup.append("text")
+            .text(0)
+            .attr("id", function(d){return d.axis})
+            .attr("class", "chartlines_"+j)
+            .attr("x", function(d,i){return lineOffset*1.5 + 15 + random[i]*15})
+            .attr("dy", 3)
+            .attr("transform", function(d,i){
+                return "translate(" + (1) + "," + ((graphHeight-groupWidth)/4*i+(groupWidth/2*j)+graphPadding/2+(j-1)*(groupWidth/4)) + ")"})
+            .style("fill", "lightgrey")
+            .style("font-size", "10px")
+            .style("opacity", 0);
+    }
+}
+
+function linesUpdate(data, ind){
+    var graphWidth = Math.round(d3.select("#right").node().parentNode.offsetWidth);
+    for(var i=0; i<3; i++){
+        var groupSelect = d3.select("#"+groupNames[i]+ind+"_group").selectAll("g").data(data[groupNames[i]]);
+        groupSelect.select("path").transition().duration(1200)
+            .attr("d", function(d,i){return "M " + lineOffset*1.5 + " 0 L " + (lineOffset*1.5 + d.value*(graphWidth-lineOffset -15- graphPadding/2)/10) + " 0"})
+            .style("stroke", color[ind])
+        groupSelect.select("circle").transition().duration(1200)
+            .attr("cx", function(d,i){return lineOffset*1.5 + d.value*(graphWidth-lineOffset -15- graphPadding/2)/10})
+            .style("fill", color[ind])
+        groupSelect.select("text").transition().duration(1200)
+            .attr("x", function(d,i){return lineOffset*1.5 + 5 + d.value*(graphWidth-lineOffset -15- graphPadding/2)/10})
+            .style("fill", color[ind])
+            .style("opacity", 1)
+            .text(function(d){return Math.round(d.value*10)/10});
+    }
+}
+
+function linesReset(ind){
+
+    var random = [];
+    var graphWidth = Math.round(d3.select("#right").node().parentNode.offsetWidth);
+    for(var j=0; j<3; j++){
+        var random =[];
+        var groupSelect = d3.select("#"+groupNames[j]+ind+"_group").selectAll("g");
+        groupSelect.select("path").transition().duration(1200)
+            .attr("d", function(d,i){random.push(Math.random(i*j));return "M " + lineOffset*1.5 + " 0 L " + (lineOffset*1.5 + 10 + random[i]*15) + " 0"})
+            .style("stroke", "lightgrey")
+        groupSelect.select("circle").transition().duration(1200)
+            .attr("cx", function(d,i){return lineOffset*1.5 + 10 + random[i]*15})
+            .style("fill", "lightgrey")
+        groupSelect.select("text").transition().duration(1200)
+            .text(0)
+            .attr("x", function(d,i){return lineOffset*1.5 + 15 + random[i]*15})
+            .style("fill", "lightgrey")
+            .style("opacity", 0);
+    }
+}
+
+groupNames.forEach(d => {
+    Block(d)
+});
+
+var tooltip = d3.select("body")
+    .append("div")
+    .attr('id', 'tooltip')
+	.style("z-index", "10")
+	.style("visibility", "hidden")
+    .style("color","black")
+    .style("background", "black")
+    .attr("transform", "translate(" + (10) + "," + (-10) + ")");
+
+d3.select("body")
+    .on("mousemove", function(){
+        tooltip.style("top", (event.pageY-10)+"px").style("left",(event.pageX-10)+"px");
+        infotip.style("top", (event.pageY-10)+"px").style("left",(event.pageX-10)+"px");
+        if(d3.mouse(document.querySelector("html"))[1]+infotip.node().clientHeight+15>window.height){
+                    infotip.style("transform", "translate( -100px, -"+(infotip.node().clientHeight)+"px)");
+                }else{
+                    infotip.style("transform", "translate(-100px, 20px)");
+                    }
+    })
+
+map.on('load', function(){
+    var size = 200;
+
+map.on('mouseenter', 'point', function () {
+    map.getCanvas().style.cursor = 'pointer';
+});
+
+map.on('mouseleave', 'point', function () {
+    map.getCanvas().style.cursor = '';
+}); 
+
+async function fetchProgress(response, max) {
+    const reader = response.body && response.body.getReader();
+    if (!reader) {
+        progress = await response.arrayBuffer();
+    }
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      progress += value.length;
+      d3.select("#load_text").text(Math.round(progress/max*100)+"%")
+    }
+    if(progress/max>=0.99){
+        d3.select('#charts').attr('width', width).transition().duration(2000).style("opacity",0.80);
+        d3.select("#load").node().remove();
+    }
+}
+
+const roadsPromise = fetch("roads.geojson", {mode: "cors"});
+const dotsPromise = fetch("dots.csv", {mode: "cors"});
+const dictPromise = fetch("dict.json", {mode: "cors"});
+
+var selected = {};
+var pts = [];
+var progress = 0;
+
+roadsPromise.then(async roads => {
+    croads = roads.clone()
+    fetchProgress(roads, 9729335 + 8673612 + 6585446)
+    roads=await croads.json();
+    delete croads;
+dotsPromise.then(async function(dots){
+    cdots = dots.clone();
+    fetchProgress(dots, 9729335 + 8673612 + 6585446)
+    dots = await cdots.text();
+    delete cdots;
+    dots = d3.csvParse(dots);
+    d3.selectAll('dots')
+        .data(dots, function(d,i){
+        for (var key in d){d[key]=Number(d[key])}
+        var coords = [d.X, d.Y];
+        delete d.X; delete d.Y;
+        dots[i]= { "type": "Feature", "properties": d, "geometry": { "type": "Point", "coordinates": coords } };
+        })
+    delete dots.columns;
+    dots = turf.featureCollection(dots);
+    dictPromise.then(async function(dict){
+    cdict = dict.clone();
+    fetchProgress(dict, 9729335 + 8673612 + 6585446)
+    dict = await cdict.json();
+    delete cdict;
+
+    map.addSource('heatmap_source', { type: 'geojson', data: dots});
+            var z = 0.45
+            var t = 0.55
+    map.addLayer({
+                "id": "heatmap",
+                "source": "heatmap_source",
+                "type": "heatmap",
+                "layout": {
+                    "visibility":"none"
+                    },
+                "paint": {
+                    'heatmap-weight': [
+                        'interpolate',
+                        ['linear'],
+                        ['get','Real Estate'],
+                        0,0,
+                        10,1
+                    ],
+                    'heatmap-color': 
+                        ["interpolate",
+                        ["linear"],
+                        ["heatmap-density"],
+                        0,"rgba(0,0,255,0)",
+                        0.1,"rgba(65,105,225, 0)",
+                        0.3,"rgba(0,255,255,0)",
+                        0.5,"rgba(59,168,234,0.5)",
+                        0.6,"rgba(59,168,234,0.8)",
+                        0.7,"rgba(64,121,240,0.9)",
+                        0.8,"#6e52ea",
+                        0.85, "#ca52ea",
+                        0.90,"#ecaefd",
+                        1,"#ff1a76"],//["#3ba8ea","#b470ef","#e963c1"]
+                    'heatmap-intensity': 1.1,
+                    'heatmap-radius': [
+                        'interpolate',
+                        ['exponential', 2],
+                        ['zoom'],
+                        12,6.2,
+                        13.4,16,
+                        14.5,35,
+                        15,50,
+                        16,100,
+                        19,800
+                    ],
+                    'heatmap-opacity': 0.25
+                    }
+            });
+
+    function Create(ind, point, clr){
+        point.properties.ind = ind;
+        if(!map.getLayer("point"+ind)){
+            map.addSource('point'+ind, { type: 'geojson', data: {"type": "FeatureCollection","features": [point]}});
+            map.addLayer({
+                "id": "point"+ind,
+                "source": "point"+ind,
+                "type": "circle",
+                "paint": {
+                    "circle-radius":6,
+                    "circle-color":clr,
+                    "circle-opacity":0.6,
+                    "circle-stroke-width":1.5,
+                    "circle-stroke-color":clr,
+                    "circle-stroke-opacity":1
+                    }
+            });
+        }
+
+        ///// ANIMATION LOADING ///////
+        var circle = turf.circle(point, totalRadius/1000);
+        var length = turf.length(circle);
+        var arc_slice = turf.lineArc(point,(totalRadius/1000),0,15)
+        var speedFactor = 1500; // number of frames per longitude degree
+        //animation[ind]; // to store and cancel the animation
+        var startTime = 0;
+        var progress = 0; // progress = timestamp - startTime
+        var resetTime = false; // indicator of whether time reset is needed for the animation
+        var pauseButton = document.getElementById('pause');
+
+        map.addLayer({
+            'id': 'line-animation'+ind,
+            'type': 'line',
+            'source': {
+                'type': 'geojson',
+                'data': arc_slice
+            },
+            'paint': {
+                'line-color': clr,
+                'line-width': 3,
+                'line-opacity': .3
+            }
+        });
+
+        startTime = performance.now();
+    
+        animateLine();
+        function animateLine(timestamp) {
+            if (resetTime) {
+                startTime = performance.now() - progress;
+                resetTime = false;
+            } else {
+                progress = timestamp - startTime;
+            }
+            if (progress > speedFactor) {
+                startTime = timestamp;
+                arc_slice = turf.lineArc(point, (totalRadius/1000),0, 15);
+            } else {
+                var x = progress / speedFactor;
+                if(x){
+                    arc_slice = turf.lineArc(point, (totalRadius/1000),x*360,x*360+15);
+                    map.getSource('line-animation'+ind).setData(arc_slice);
+                }
+            }
+            animation[ind] = requestAnimationFrame(animateLine);
+        }
+
+    ////// ANIMATION LOADING ENDS //////
+
+        GrowthWorker[ind] = new Worker("growth.js");
+        var encircled = [];
+
+        var ptsWithin = turf.pointsWithinPolygon(dots, circle);
+        encircled = turf.featureCollection(encircled);
+        GrowthWorker[ind].postMessage([point, dict, roads, ptsWithin, ind, data, clr,totalRadius,radiusRange[radiusRange.length-1]]);                        
+        GrowthWorker[ind].onmessage = function(e){
+            cancelAnimationFrame(animation[ind])
+            map.removeLayer("line-animation"+ind);
+            map.removeSource("line-animation"+ind);
+            if (e.data[2]){
+                map.removeLayer("point"+ind);
+                map.removeSource("point"+ind);
+                cancelAnimationFrame(animation[ind]);
+                map.removeLayer("line-animation"+ind);
+                map.removeSource("line-animation"+ind);
+                console.log('fail to build')
+            }else{
+                
+                workerData[ind]={list:e.data[1].Totals,mean:d3.mean(e.data[1].Totals, function(d,i){return d.value})};
+
+                selected[ind]=e.data[0];
+                var name = 'sel_roads' + ind;
+                var source = turf.featureCollection(Object.values(selected[ind]));
+                if(map.getLayer(name)){
+                    //console.log('then', source)
+                    if(totalRadius>previousRadius[ind]){
+                        map.getSource(name).setData(source);
+                    }
+                
+                }else{
+                    //console.log('first', source)
+
+                    map.addSource(name, { type: 'geojson', data: source, lineMetrics: true });
+                    map.addLayer({
+                        'id': name,
+                        'source': name,
+                        'type': 'line',
+                        'paint': {
+                            'line-color': ['get', 'color'],
+                            'line-width':2,
+                            'line-opacity': 1//['get', 'end']
+                        },
+                        "filter": ["<=",  ['number', ['get', 'start']], previousRadius[ind]]           
+                    }, 'point'+ind);
+                }
+                
+ 
+                let createPopup = ()=>{
+                    var content = "<div>"+
+                            "<div width=80px height=60px style='display:inline-block;' class='popup_chart"+ind+"'></div>" +
+                            "<div width=120px height=60px style='display:inline-block;' class='popup_text"+ind+"'>" + 
+                            "</div>" +
+                        "</div>"
+
+                    var pop = new mapboxgl.Popup({ closeOnClick: false, anchor: "bottom-right", className: "popup_"+ind })
+                        .setLngLat(point.geometry.coordinates)
+                        .setHTML(content)
+                        .addTo(map);
+                    popups[ind]=pop;
+                    d3.select(".popup_"+ind).select(".mapboxgl-popup-content").select("button").node().onclick = function(){popupClosed[ind] = true}
+                    var texts = d3.select("div.popup_text"+ind);
+                    groupNames.forEach(function(d,i){
+                        texts.append("p").text(d+": "+totals.list[i].value.toFixed(1)).attr("style","margin:0.5em; margin-left:0; color:"+ threeColor(i, ind))
+                    })
+                    texts.append("h2").text("Mean: "+totals.mean.toFixed(1)).attr("style","margin:0 20px 0 0; opacity: 0.8")
+                    
+                    var dimension = 60;
+                    var svg = d3.select("div.popup_chart"+ind).append("svg").attr("width",dimension+20+"px").attr("height",dimension+"px")
+                    charts = svg.append("g").attr("transform","translate("+((dimension+20)/2)+","+(dimension/2)+")");
+
+                    var arcGen = d3.arc()
+                        .startAngle(function(d) {
+                            return d.startAngle})
+                        .endAngle(function(d) {
+                            return d.endAngle})
+                        .innerRadius(function(d) {
+                            //return (d.mean/1.6)*4})
+                            return 15})
+                        .outerRadius(function(d) {
+                            //return d.mean*4})
+                            return 24})
+                    pieGen = d3.pie()
+                        .value(function(d) {return d.value.toFixed(1);})
+                        .sort(function(d){return d.index;});
+
+
+                    var out = pieGen(totals.list);
+                    out.forEach(function(d){
+                        d.mean=totals.mean;
+                    })
+
+                    charts.selectAll('path')
+                            .data(out)
+                            .enter()
+                                .append('path')
+                                .attr('class','sector')
+                                .attr('d', function(d){
+                                    return arcGen(d);
+                                })
+                                .attr('fill', (d,i)=>{return threeColor(i,ind)})
+                                .attr('opacity', 1);
+                }
+
+                
+                let updatePopup = ()=>{
+
+                    var texts = d3.select("div.popup_text"+ind);
+                    texts.selectAll("p").transition().duration(1400)
+                        .text((x,i)=>{
+                            return groupNames[i]+": "+totals.list[i].value.toFixed(1)
+                        })
+                    texts.select("h2").transition().duration(1400).text("Mean: "+totals.mean.toFixed(1))
+
+                    var dimension = 60;
+                    var charts = d3.select("div.popup_chart"+ind).select("svg").select("g");
+
+                    var arcGen = d3.arc()
+                        .startAngle(function(d) {
+                            return d.startAngle})
+                        .endAngle(function(d) {
+                            return d.endAngle})
+                        .innerRadius(function(d) {
+                            //return (d.mean/1.6)*4})
+                            return 15})
+                        .outerRadius(function(d) {
+                            //return d.mean*4})
+                            return 24})
+
+                    pieGen = d3.pie()
+                        .value(function(d) {return d.value.toFixed(1);})
+                        .sort(function(d){return d.index;});
+
+
+                    var out = pieGen(totals.list);
+                    out.forEach(function(d){
+                        d.mean=totals.mean;
+                    })
+                    //console.log(charts.selectAll('path'), out)
+                    charts.selectAll('path')
+                        .data(out)
+                        .transition()
+                        .duration(1400)
+                            .attr('d', function(d){
+                                return arcGen(d);
+                            })     
+                    }
+
+                        
+                function growth(callback){
+                   
+                    var growthAnimation; // to store and cancel the animation
+                    var growthStartTime = 0;
+                    var growthProgress = 0; // progress = timestamp - startTime
+                    var timeSpan = Math.abs(totalRadius-previousRadius[ind])*2;
+                    
+                    growthStartTime = performance.now();
+                    animateRoads();
+                    function animateRoads(timestamp) {
+
+                        growthProgress = timestamp - growthStartTime;
+                        
+                        if (growthProgress > timeSpan) {
+                            callback();
+                            cancelAnimationFrame(growthAnimation);
+                        } else {
+                            var x = (growthProgress / timeSpan)*(totalRadius-previousRadius[ind])+Number(previousRadius[ind]);
+                            if(x){
+                                filter = ["<=",  ['number', ['get', 'start']], x];
+                                map.setFilter(name, filter);
+                            }
+                            growthAnimation = requestAnimationFrame(animateRoads);
+                        }
+                    }    
+                }  
+                growth(function(){
+                    if(totalRadius<previousRadius[ind]){
+                        map.getSource(name).setData(source);
+                    }
+
+                    linesUpdate(e.data[1],ind)
+                    previousRadius[ind]=JSON.parse(JSON.stringify({deep: {key: totalRadius}})).deep.key
+                    if(d3.select(".popup_"+ind).empty()){
+                        if(!popupClosed[ind]){
+                            setTimeout(createPopup,600);
+                        }
+                    }else{
+                        setTimeout(updatePopup,600);
+                    }
+                });
+                
+                /////////////////////////////////////////////////here popup starts
+                var totals = {list:e.data[1].Totals,mean:d3.mean(e.data[1].Totals, function(d,i){return d.value})};
+            }
+        }  
+    }
+    
+    function resetGrowth(ind, callback){
+                   
+        var name = 'sel_roads' + ind;
+        var growthAnimation; // to store and cancel the animation
+        var growthStartTime = 0;
+        var growthProgress = 0; // progress = timestamp - startTime
+        var timeSpan = Math.abs(totalRadius)*2;
+        growthStartTime = performance.now();
+        animateRoads();
+        function animateRoads(timestamp) {
+
+            growthProgress = timestamp - growthStartTime;
+            
+            if (growthProgress > timeSpan) {
+                cancelAnimationFrame(growthAnimation);
+                callback();
+                popupClosed[ind]=false;
+                if(popups[ind].isOpen()){ setTimeout(()=>{popups[ind].remove()},300);}
+            } else {
+                var x = totalRadius-(growthProgress / timeSpan*totalRadius);
+                if(x){
+                    filter = ["<=",  ['number', ['get', 'start']], x];
+                    map.setFilter(name, filter);                           
+                }
+                growthAnimation = requestAnimationFrame(animateRoads);
+            }
+        }    
+    } 
+
+
+
+function lowerBar(){
+    
+    var select = d3.select('#selector')
+    for(var key in dots.features[0].properties){
+        if(key!=="id"){
+            select.append("option").text(key)
+        }
+    }
+}
+lowerBar();
+document.querySelector("#selector").addEventListener("change", selectHeatmap)
+function selectHeatmap(e){
+        if(e.target.value=="None"){
+            map.setLayoutProperty("heatmap", 'visibility', 'none');
+        }else{
+            map.setLayoutProperty("heatmap", 'visibility', 'visible');
+            map.setPaintProperty("heatmap", "heatmap-weight", [
+                        'interpolate',
+                        ['linear'],
+                        ['get', e.target.value],
+                        0,0,
+                        10,1
+                    ])
+        }
+}
+for(var i=0; i<3; i++){
+    map.on('click', 'point'+i, mapClick);
+    map.on('mouseenter', 'point'+i, function () {
+        map.getCanvas().style.cursor = 'pointer';
+    });
+    map.on('mouseleave', 'point'+i, function () {
+        map.getCanvas().style.cursor = '';
+    }); 
+}
+
+function mapClick (e) {
+    
+    var ind = e.features[0].layer.id.slice(-1)
+    if(!popups[ind].isOpen()){
+    var coordinates = e.features[0].geometry.coordinates.slice();
+    var totals = workerData[ind];
+    function popup () {
+        // var coordinates = e.features[0].geometry.coordinates.slice();
+        var content = "<div>"+
+                "<div width=80px height=60px style='display:inline-block;' class='popup_chart"+ind+"'></div>" +
+                "<div width=120px height=60px style='display:inline-block;' class='popup_text"+ind+"'>" + 
+                "</div>" +
+            "</div>"
+            
+
+        var pop = new mapboxgl.Popup({ closeOnClick: false, anchor: "bottom-right", className: "popup_"+ind })
+            .setLngLat(coordinates)
+            .setHTML(content)
+            .addTo(map);
+        popups[ind]=pop;
+
+        var texts = d3.select("div.popup_text"+ind);
+        groupNames.forEach(function(d,i){
+            texts.append("p").text(d+": "+totals.list[i].value.toFixed(1)).attr("style","margin:0.5em; margin-left:0; color:"+threeColor(i, ind))
+        })
+        texts.append("h2").text("Mean: "+totals.mean.toFixed(1)).attr("style","margin:0 20px 0 0; opacity: 0.8")
+        
+        var dimension = 60;
+        var svg = d3.select("div.popup_chart"+ind).append("svg").attr("width",dimension+20+"px").attr("height",dimension+"px")
+        charts = svg.append("g").attr("transform","translate("+((dimension+20)/2)+","+(dimension/2)+")");
+
+        var arcGen = d3.arc()
+            .startAngle(function(d) {
+                return d.startAngle})
+            .endAngle(function(d) {
+                return d.endAngle})
+            .innerRadius(function(d) {
+                //return (d.mean/1.6)*4})
+                return 15})
+            .outerRadius(function(d) {
+                //return d.mean*4})
+                return 24})
+        pieGen = d3.pie()
+            .value(function(d) {return d.value.toFixed(1);})
+            .sort(function(d){return d.index;});
+
+
+        var out = pieGen(totals.list);
+        out.forEach(function(d){
+            d.mean=totals.mean;
+        })
+
+        charts.selectAll('path')
+                .data(out)
+                .enter()
+                    .append('path')
+                    .attr('class','sector')
+                    .attr('d', function(d){
+                        return arcGen(d);
+                    })
+                    .attr('fill', (d,i)=>{return threeColor(i,ind)})
+                    .attr('opacity', 1);
+                }
+                popup();
+}
+}
+
+function Bar(){
+        var svg = d3.select("#controlBar").append("svg")
+            .attr('width', width)
+            .attr('height', barHeight);
+        var scales = svg.append("g")
+            .attr("transform", "translate(" + (width/7*0.25) + "," + (0) + ")");
+        var s_clc=[0,0,0,0];
+        s_clc[scaleSelector]=1;
+        var clc=[0,0,0];
+        scales.append("text").text("Choose walking distance:")
+            .attr('opacity', 1)
+            .style('font-color', 'grey')
+            .attr("text-anchor", "middle")
+            .attr("x", width/7*1.5 +"px")
+            .attr("dy", "1.5em")
+            .style("font-size", "10px")
+            //.style("font-weight", "bold")
+        svg.append('path')
+            .attr('class', 'separator')              
+            .attr("d", "M0,1L"+width+",1")
+            .attr('opacity', 0.3)
+            .attr('stroke', 'black')
+            .attr('stroke-width', "0.5px")
+            .style('pointer-events', 'none')
+            .attr('pointer-events', 'none')
+        svg.append('path')  
+            .attr('class', 'separator')              
+            .attr("d", "M0,"+(barHeight-1)+"L"+width+","+(barHeight-1))
+            .attr('opacity', 0.3)
+            .attr('stroke', 'black')
+            .attr('stroke-width', "0.5px")
+            .style('pointer-events', 'none')
+            .attr('pointer-events', 'none')
+
+        ///// SCALE BUTTONS //////
+        for(var i = 0; i<4; i++){  
+            var circleg = scales.append('g')
+                .attr('transform', function(d) {
+                    return 'translate(' + (width/14*(i+0.5)+i*i*4)+ ',' + (barHeight/2)  + ')';
+                })
+                  
+            circleg.append('circle').attr('r', function(){if(s_clc[i]){return (i+1)*4+4;}else{return (i+1)*4;}})
+                .attr('opacity', function(){if(s_clc[i]){return 0.5}else{return 0;}})
+                .attr('class', 's_outer')
+                .attr('id', function(){if(s_clc[i]){return 'select'}else{return 'unselect';}})
+                .attr('stroke', 'grey')
+                .attr('stroke-width', 2)
+                .attr('fill-opacity',0)
+            circleg.append('text').text(function(){if(radiusRange[i]<=radiusRange[1]){return radiusRange[i]}else{return radiusRange[i]+'m'}})
+                .attr('opacity', 1)
+                .style('font-color', 'grey')
+                .attr("text-anchor", "middle")
+                .attr("x", "0px")
+                .attr("dy", "32px")
+                .style("font-size", "10px")
+                //.style('font-weight', 'bold')
+            var s_opacity = 0.1;
+            var circle = circleg.append('circle').attr('r', (i+1)*4)
+                .attr('opacity', 1)
+                .attr('id', function(){if (s_clc[i]){return 'set';}else{return 'unset';}})
+                .attr('class', function(){return i})
+                .attr('stroke', 'hsl(0, 0%, 64%)')
+                .attr('stroke-width', 2)
+                .attr('fill', 'grey')
+                .attr('fill-opacity', function(){if (s_clc[i]){return 0.8;}else{return s_opacity;}})
+                    .on('mouseover', function (d,i){
+                        d3.select(this).style("cursor", "pointer");
+                        if(d3.select(this).attr('id')!=='set'){
+                        d3.selectAll("#unset")
+                            .transition().duration(200)
+                            .style("fill-opacity", s_opacity); 
+                        d3.select(this)
+                            .transition().duration(200)
+                            .style("fill-opacity", 0.3);	
+                        }else{
+                            d3.select(this)
+                            .transition().duration(200)
+                            .style("fill-opacity", 1)
+                            .attr('id','set');
+                        }
+                    })
+                    .on('mouseout', function(){
+                        d3.select(this).style("cursor", "");
+
+                        if(d3.select(this).attr('id')!=='set'){
+                        d3.selectAll("#unset")
+                            .transition().duration(200)
+                            .style("fill-opacity", s_opacity);
+                        }else{
+                            d3.select(this)
+                            .transition().duration(200)
+                            .style("fill-opacity", 0.6)
+                            .attr('id','set');
+                        }
+                    })
+                    .on('click', function(){
+                        var ind = d3.select(this).attr('class')
+                        //console.log(map.getZoom())
+                        function ScaleSet(){
+
+                            for (var i=0; i<clc.length; i++){
+                                if(clc[i]){
+
+                                    if(map.getLayer("sel_roads"+i)){
+                                        var coordinates = map.getSource("point"+i)._data.features[0];
+                                        Create(i, coordinates, color[i])
+                                    }
+                                }
+                            }                                  
+                        }
+
+                        if(d3.select(this).attr('id')!=='set'){
+
+                            d3.selectAll("#set")
+                                .attr('id','unset')
+                                .transition().duration(200)
+                                .style("fill-opacity", s_opacity);
+                                
+                            d3.select(this)
+                                .attr('id','set')
+                                .transition().duration(200)
+                                .style("fill-opacity", 0.6);
+                                	
+                            d3.select('#select').transition().duration(800).attr('r', d3.select("#select").attr('r')-4).attr('opacity', 0.0).attr('id','unselect')
+                            d3.select(this.parentNode).select('.s_outer').transition().duration(800).attr('r', (Number(ind)+1)*4+4).attr('opacity', 0.5).attr('id', 'select')
+                            totalRadius = radiusRange[ind];
+                            ScaleSet();
+                            s_clc[ind]=1;
+
+                        }
+                    });
+            
+        }
+
+        ////// POINTS OF INTEREST ///////
+        var POIs = svg.append("g")
+            .attr("transform", "translate(" + (width/7*3.75) + "," + (0) + ")");
+        POIs.append("text").text("Set anchors on the map: ")
+            .attr('opacity', 1)
+            .style('font-color', 'grey')
+            .attr("text-anchor", "middle")
+            .attr("x", width/7*1.5 + "px")
+            .attr("dy", "1.5em")
+            .style("font-size", "10px")
+
+        for(var i = 0; i<3; i++){  
+            var circleg = POIs.append('g')
+                .attr('transform', function(d) {
+                    return 'translate(' + (width/7*(i+0.5))+ ',' + (barHeight/2)  + ')';
+                })
+            circleg.append('circle').attr('r', 10)
+                .attr('opacity', 0.5)
+                .attr('class', function(){return i})
+                .attr('id', 'outer')
+                .attr('stroke', 'grey')
+                .attr('stroke-width', 2)
+                .attr('fill-opacity',0)
+            
+            circleg.append('text').text(function(){return "POI "+(i+1)})
+                .attr('opacity', 1)
+                .style('font-color', 'grey')
+                .attr("text-anchor", "middle")
+                .attr("x", "0px")
+                .attr("dy", "32px")
+                .style("font-size", "10px")
+                //.style('font-weight', 'bold')
+
+            var d_opacity = 0.4;
+            var circle = circleg.append('circle').attr('r', 10)
+                .attr('opacity', 1)
+                .attr('class', function(){return i})
+                .attr('id', 'empty')
+                .attr('stroke', 'hsl(0, 0%, 64%)')
+                .attr('stroke-width', 2)
+                .attr('fill', (d,n)=>{
+                    let c = d3.hsl(colorScheme(i))
+                    if(i==1){c.s *= 1.1; c.l -=0.05}
+                    c.s *= 0.9;
+                    c.l += 0.1;
+                    return c;
+                    })
+                .attr('fill-opacity',d_opacity)
+                    .on('mouseover', function (d,i){
+                        d3.select(this).style("cursor", "pointer");
+                        if(d3.select(this).attr('id')!=='created'){
+                        d3.selectAll("#empty")
+                            .transition().duration(200)
+                            .style("fill-opacity", d_opacity); 
+                        d3.select(this)
+                            .transition().duration(200)
+                            .style("fill-opacity", 0.8);	
+                        }else{
+                            d3.select(this)
+                            .transition().duration(200)
+                            .style("fill-opacity", 1)
+                            .attr('id','created');
+                        }
+                    })
+                    .on('mouseout', function(){
+                        d3.select(this).style("cursor", "");
+                        if(d3.select(this).attr('id')!=='created'){
+                        d3.selectAll("#empty")
+                            .transition().duration(200)
+                            .style("fill-opacity", d_opacity);
+                        }else{
+                            d3.select(this)
+                            .transition().duration(200)
+                            .style("fill-opacity", 0.8)
+                            .attr('id','created');
+                        }
+                    })
+                    .on('click', function(){
+                        var clr = d3.select(this).attr('fill');
+                        var ind = d3.select(this).attr('class')
+                        function PointSet(e){
+                            if(clc[ind]==0){
+                                features[ind] = turf.point([e.lngLat.lng,e.lngLat.lat]);
+                                features[ind].properties = {"color": clr};
+                                color[ind]=clr;
+                                Create(ind , features[ind], clr);
+                                tooltip.style("visibility", "hidden")
+                                    .style("width","0px")
+                                    .style("height","0px")
+                                clc[ind]=1
+                            }
+                        }
+                        if(d3.select(this).attr('id')!=='created'){
+                            tooltip.style("background", d3.select(this).attr('fill'))
+                            tooltip.style("visibility", "visible")
+                                .style("width","18px")
+                                .style("height","18px")
+                            d3.selectAll("empty")
+                                .transition().duration(200)
+                                .style("fill-opacity", d_opacity); 
+                            d3.select(this)
+                                .transition().duration(200)
+                                .style("fill-opacity", 0.8)
+                                .attr('id','created');	
+                            d3.select(this.parentNode).select('#minus').attr('visibility','hidden')
+                            d3.select(this.parentNode).select('#plus').attr('stroke','white')
+                            d3.select(this.parentNode).select('#outer').transition().duration(800).attr('r','14')
+                            clc[ind]=0;
+                            map.on('click', PointSet);
+                        }else{
+                            tooltip.style("visibility", "hidden")
+                                .style("width","0px")
+                                .style("height","0px")
+                            clc[ind]=1;
+                            d3.selectAll("#empty")
+                                .transition().duration(200)
+                                .style("fill-opacity", d_opacity); 
+                            d3.select(this)
+                                .transition().duration(200)
+                                .style("fill-opacity", d_opacity)
+                                .attr('id','empty');
+                            d3.select(this.parentNode).select('#minus').attr('visibility','visible')
+                            d3.select(this.parentNode).select('#plus').attr('stroke','white')
+                            d3.select(this.parentNode).select('#outer').transition().duration(800).attr('r','10')
+                            
+                            if(map.getLayer("line-animation"+ind)){
+                                cancelAnimationFrame(animation[ind])
+                                map.removeLayer("line-animation"+ind);
+                                map.removeSource("line-animation"+ind);
+                                GrowthWorker[ind].terminate();
+                                map.removeLayer("point"+ind);
+                                map.removeSource("point"+ind);
+                            }
+                            if(map.getLayer("sel_roads"+ind)){
+                                resetGrowth(ind, function(){
+                                    map.removeLayer("point"+ind);
+                                    map.removeSource("point"+ind);
+                                    map.removeLayer("sel_roads"+ind);
+                                    map.removeSource("sel_roads"+ind);
+                                    delete data["Space"][ind];
+                                    delete data["Activities"][ind];
+                                    delete data["Values"][ind];
+                                    linesReset(ind);
+                                    previousRadius[ind]=0;
+                                });
+
+                            
+                                
+                            }
+
+                        }
+                    });
+
+                circleg.append('path')            
+                    .attr('id', 'plus')    
+                    .attr("d", "M-5," + 0 + "L" + 5 + "," + 0)
+                    .attr('opacity', 1)
+                    .attr('stroke', 'white')
+                    .attr('stroke-width', 2)
+                    .style('pointer-events', 'none')
+                    .attr('pointer-events', 'none')
+                circleg.append('path')  
+                    .attr('id', 'minus')              
+                    .attr("d", "M0," + -5 + "L" + 0 + "," + 5)
+                    .attr('opacity', 1)
+                    .attr('stroke', 'white')
+                    .attr('stroke-width', 2)
+                    .style('pointer-events', 'none')
+                    .attr('pointer-events', 'none')
+        }
+         
+    }
+    Bar();
+
+});
+});
+});
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+It is a project of interactive Mapbox+D3 map, designed to showcase Foursquare activity in Tallinn in a timespan 2010 - 2018.

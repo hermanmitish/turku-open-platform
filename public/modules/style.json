@@ -1,0 +1,109 @@
+{
+    "version": 8,
+    "name": "Turku",
+    "metadata": {
+        "mapbox:autocomposite": true,
+        "mapbox:type": "template",
+        "mapbox:sdk-support": {
+            "js": "0.49.0",
+            "android": "6.5.0",
+            "ios": "4.4.0"
+        }
+    },
+    "center": [22.26566787250613, 60.44693124668743],
+    "zoom": 13.411494045417312,
+    "bearing": -15.273351977639775,
+    "pitch": 0,
+    "sources": {
+        "composite": {
+            "url": "mapbox://switch9.5su55uff,switch9.4jemv8ag,switch9.3nr40e2f,switch9.dlhj3jrz",
+            "type": "vector"
+        }
+    },
+    "sprite": "mapbox://sprites/switch9/cjwhk5gp200ff1cn1k0a3n08d/ck2u8j60r58fu0sgyxrigm3cu",
+    "glyphs": "mapbox://fonts/switch9/{fontstack}/{range}.pbf",
+    "layers": [
+        {
+            "id": "background",
+            "type": "background",
+            "paint": {"background-color": "hsl(0, 0%, 100%)"}
+        },
+        {
+            "id": "Land",
+            "type": "fill",
+            "source": "composite",
+            "source-layer": "land-76cgdr",
+            "layout": {},
+            "paint": {
+                "fill-color": "hsla(0, 0%, 0%, 0.1)",
+                "fill-opacity": 0.57,
+                "fill-outline-color": "hsla(0, 0%, 0%, 0)"
+            }
+        },
+        {
+            "id": "Plots",
+            "type": "fill",
+            "source": "composite",
+            "source-layer": "landuse-1yjbqm",
+            "layout": {},
+            "paint": {
+                "fill-color": "hsla(0, 0%, 0%, 0.15)",
+                "fill-opacity": [
+                    "interpolate",
+                    ["linear"],
+                    ["zoom"],
+                    11,
+                    0,
+                    12,
+                    0.57,
+                    22,
+                    0.57
+                ],
+                "fill-outline-color": "hsla(0, 0%, 0%, 0)"
+            }
+        },
+        {
+            "id": "Buildings",
+            "type": "fill",
+            "source": "composite",
+            "source-layer": "buildings-1rz6e5",
+            "layout": {},
+            "paint": {
+                "fill-color": "hsla(0, 0%, 0%, 0.15)",
+                "fill-opacity": [
+                    "interpolate",
+                    ["linear"],
+                    ["zoom"],
+                    11,
+                    0,
+                    13,
+                    0,
+                    13.67,
+                    0.57,
+                    22,
+                    0.57
+                ],
+                "fill-outline-color": "hsla(0, 0%, 0%, 0)"
+            }
+        },
+        {
+            "id": "Roads",
+            "type": "line",
+            "source": "composite",
+            "source-layer": "roads-8526sy",
+            "minzoom": 11,
+            "layout": {},
+            "paint": {
+                "line-color": "hsl(0, 0%, 62%)",
+                "line-opacity": 0.6,
+                "line-width": 0.5
+            }
+        }
+    ],
+    "created": "2019-06-04T08:45:24.822Z",
+    "id": "cjwhk5gp200ff1cn1k0a3n08d",
+    "modified": "2019-06-18T11:51:15.201Z",
+    "owner": "switch9",
+    "visibility": "private",
+    "draft": false
+}
